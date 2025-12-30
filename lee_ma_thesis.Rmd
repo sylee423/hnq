@@ -1,0 +1,555 @@
+---
+title: "thesis"
+author: "Lee, Seoyoung"
+date: "2024-08-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+
+```
+
+
+```{r import dataset all at once}
+#dat <-
+  #list.files(path = "./intuition_test_data/",
+  #           pattern = "\\.csv$",
+  #           full.names = T) %>%
+  #map_df(~read_csv(., col_types = cols(.default = "c"))) %>%
+  #filter(trial_type == "survey") %>%
+  #select(`response/P0_Q0`, 
+  #       `response/P0_Q1`, `response/P0_Q2`, `response/P0_Q3`, `response/P0_Q4`,
+  #       word)
+#colnames(dat) <- c("ID", "PPQ", "LNQ", "HNQ", "Comment", "stim")
+
+
+#for(i in 1:nrow(dat)){
+#  if(is.na(dat$ID[i])) dat$ID[i] <- dat$ID[i-1]
+#}
+
+dat <- read.csv("lee_ma_thesis_intuition_test_data.csv")
+
+dat$ID <- as.factor(dat$ID)
+
+# the above code will create an object
+# which is equivalent to rbinding all csv files under /intuition_test_data/.
+# use filter(trial type == "survey") to filter out rows of interest
+
+```
+
+
+
+
+```{r target data}
+########leaving only target rows##############
+dat_targ <- 
+  dat %>%
+  filter(!stim %in% c("filler1", "filler2", "filler3", "filler4", "filler5", "filler6")) %>%
+  filter(!(is.na(stim)))
+
+
+#######creating column 'stim_type'###########
+dat_targ<-
+  dat_targ %>%
+  mutate(stim_type = 
+           ifelse(stim %in% c("target12", "target12p", "target12dp"), "target12",
+                  ifelse(stim %in% c("target13", "target13p", "target13dp"), "target13",
+                         ifelse(stim %in% c("target14", "target14p", "target14dp"), "target14", "target15"))))
+
+
+
+######creating column 'stim_supertype'#################
+dat_targ <-
+  dat_targ %>%
+  mutate(stim_supertype = 
+           ifelse(stim_type %in% c("target12", "target13"), "type1", "type2"))
+
+
+
+
+#####tidying via pivot_longer#####
+dat_targ <-
+  dat_targ %>%
+  pivot_longer(c(`PPQ`, `LNQ`, `HNQ`), 
+               names_to = "question_type", values_to = "rating")
+dat_targ$rating <- as.numeric(dat_targ$rating)
+dat_targ$stim_type <- factor(dat_targ$stim_type)
+dat_targ$stim_supertype <- factor(dat_targ$stim_supertype)
+dat_targ$question_type <- factor(dat_targ$question_type, levels = c("PPQ", "LNQ", "HNQ"))
+
+#########Changing name of each stimulus############
+dat_targ$stim <- fct_recode(dat_targ$stim, "(1)" = "target12", 
+                                          "(2)" = "target12p",
+                                          "(3)" = "target12dp",
+                                          "(4)" = "target13",
+                                          "(5)" = "target13p",
+                                          "(6)" = "target13dp",
+                                          "(7)" = "target14",
+                                          "(8)" = "target14p",
+                                          "(9)" = "target14dp",
+                                          "(10)" = "target15",
+                                          "(11)" = "target15p",
+                                          "(12)" = "target15dp")
+
+dat_targ$stim <- factor(dat_targ$stim, levels =c("(1)", "(2)", "(3)", 
+                                 "(4)", "(5)", "(6)",
+                                 "(7)", "(8)", "(9)",
+                                 "(10)", "(11)", "(12)"))
+
+
+```
+
+
+```{r}
+#view(dat_targ)
+```
+
+
+
+```{r distribution of target rating}
+mean(dat_targ$rating)
+sd(dat_targ$rating)
+ggplot(data = dat_targ)+
+  geom_histogram(aes(x = rating))
+```
+
+```{r}
+dat_targ_sub_mean_type1 <-
+  dat_targ %>%
+  filter(stim_supertype == "type1") %>%
+  group_by(stim, question_type) %>%
+  summarize(mean_rating = mean(rating, na.rm = TRUE),
+            margin_rating = qt(0.975, df = 99)*sd(rating)/sqrt(100))
+
+
+
+each_plot_type1 <-
+  ggplot(data = dat_targ_sub_mean_type1) +
+  geom_bar(stat = "identity", 
+           position=position_dodge(),
+           aes(x = stim, y = mean_rating, fill = question_type))+ 
+  ggtitle("Type 1 Stimuli")+
+  xlab("Stimulus") +
+  ylab("Naturalness Rating")+
+  scale_y_continuous(breaks = seq(0,7,1))+
+  guides(fill=guide_legend(title="Question Type")) +
+  theme_light() +
+  scale_fill_grey()
+
+each_plot_type1
+
+#ggplot(data = dat_targ_sub_mean) +
+  #geom_bar(stat = "identity", 
+  #         position=position_dodge(),
+  #        aes(x = stim, y = mean_rating, fill = question_type)) 
+
+dat_targ_sub_mean_type2 <-
+  dat_targ %>%
+  filter(stim_supertype == "type2") %>%
+  group_by(stim, question_type) %>%
+  summarize(mean_rating = mean(rating, na.rm = TRUE),
+            margin_rating = qt(0.975, df = 99)*sd(rating)/sqrt(100))
+
+
+
+each_plot_type2 <-
+  ggplot(data = dat_targ_sub_mean_type2) +
+  geom_bar(stat = "identity", 
+           position=position_dodge(),
+           aes(x = stim, y = mean_rating, fill = question_type))+ 
+  ggtitle("Type 2 Stimuli")+
+  xlab("Stimulus") +
+  ylab("Naturalness Rating")+
+  scale_y_continuous(breaks = seq(0,7,1))+
+  guides(fill=guide_legend(title="Question Type")) +
+  theme_light() +
+  scale_fill_grey()
+
+each_plot_type2
+
+
+
+
+
+ggsave(plot = each_plot_type1, "each_plot_type1.jpg", path = "./plots/", 
+       width = 6, height = 2) 
+ggsave(plot = each_plot_type2, "each_plot_type2.jpg", path = "./plots/", 
+       width = 6, height = 2)
+
+```
+
+
+
+```{r}
+#because of the way geom_bar works,
+#I have to finish calculating the mean (and later on the SD)
+#before moving on to the plotting part. 
+dat_targ_mean <-
+  dat_targ %>%
+  group_by(stim_type, question_type) %>%
+  summarize(mean_rating = mean(rating, na.rm = TRUE))
+
+
+```
+
+
+
+```{r}
+ggplot(data = dat_targ_mean) +
+  geom_bar(stat = "identity", 
+           position=position_dodge(),
+           aes(x = stim_type, y = mean_rating, fill = question_type)) 
+```
+
+
+
+
+```{r}
+dat_12_HNQ <- 
+  dat_targ %>%
+  filter(stim_type == "target12") %>%
+  filter(question_type == "HNQ")
+
+dat_12_PPQ <-
+  dat_targ %>%
+  filter(stim_type == "target12") %>%
+  filter(question_type == "PPQ")
+
+t.test(dat_12_HNQ$rating, dat_12_PPQ$rating, 
+       paired = TRUE,
+       alternative = "less")
+
+
+
+dat_15_HNQ <-
+  dat_targ %>%
+  filter(stim_type == "target15") %>%
+  filter(question_type == "HNQ")
+
+
+t.test(dat_12_HNQ$rating, dat_15_HNQ$rating, 
+       paired = TRUE, 
+       alternative = "less")
+
+
+dat_14_HNQ <- 
+  dat_targ %>%
+  filter(stim_type == "target14") %>%
+  filter(question_type == "HNQ")
+
+
+dat_14_LNQ <-
+  dat_targ %>%
+  filter(stim_type == "target14") %>%
+  filter(question_type == "LNQ")
+
+t.test(dat_14_HNQ$rating, dat_14_LNQ$rating, 
+       paired = TRUE, 
+       alternative = "greater")
+```
+
+
+
+
+```{r}
+n <- 100 # number of participants
+
+dat_targ_super_mean <-
+  dat_targ %>%
+  group_by(stim_supertype, question_type) %>%
+  summarize(mean_rating = mean(rating, na.rm = TRUE),
+            margin_rating = qt(0.975,df=n-1)*sd(rating)/sqrt(n))
+
+main_plot <-
+  ggplot(data = dat_targ_super_mean) +
+  geom_bar(stat = "identity", 
+           position=position_dodge(),
+           aes(x = stim_supertype, y = mean_rating, fill = question_type))+
+  geom_errorbar(aes(x = stim_supertype, 
+                    ymin = mean_rating - margin_rating,
+                    ymax = mean_rating + margin_rating,
+                    group = question_type),
+                width = 0.2,
+                position = position_dodge(0.9))+
+  xlab("Stimulus Type") +
+  ylab("Naturalness Rating")+
+  scale_y_continuous(breaks = seq(0,7,1))+
+  guides(fill=guide_legend(title="Question Type")) +
+  theme_light() +
+  scale_fill_grey()
+
+
+main_plot
+
+
+ggsave(plot = main_plot, "main_plot.jpg", path = "./plots/", 
+       width = 6, height = 2)
+```
+
+
+
+```{r t tests}
+dat_type1_HNQ <-
+  dat_targ %>%
+  filter(stim_supertype == "type1") %>%
+  filter(question_type == "HNQ") %>%
+  group_by(ID) %>%
+  summarize(mean_rating = mean(rating))
+
+
+dat_type1_PPQ <-
+  dat_targ %>%
+  filter(stim_supertype == "type1") %>%
+  filter(question_type == "PPQ") %>%
+  group_by(ID) %>%
+  summarize(mean_rating = mean(rating))
+
+t.test(dat_type1_HNQ$mean_rating, 
+       dat_type1_PPQ$mean_rating, 
+       paired = TRUE,
+       alternative = "less")
+
+
+
+dat_type2_HNQ <-
+  dat_targ %>%
+  filter(stim_supertype == "type2") %>%
+  filter(question_type == "HNQ") %>%
+  group_by(ID) %>%
+  summarize(mean_rating = mean(rating))
+
+
+dat_type2_PPQ <-
+  dat_targ %>%
+  filter(stim_supertype == "type2") %>%
+  filter(question_type == "PPQ") %>%
+  group_by(ID) %>%
+  summarize(mean_rating = mean(rating))
+
+
+t.test(dat_type2_HNQ$mean_rating, dat_type2_PPQ$mean_rating,
+       paired= TRUE,
+       alternative = "greater")
+
+
+
+t.test(dat_type1_HNQ$mean_rating, dat_type2_PPQ$mean_rating,
+       paired = TRUE,
+       alternative = "greater")
+
+
+dat_type1_LNQ <-
+  dat_targ %>%
+  filter(stim_supertype == "type1") %>%
+  filter(question_type == "LNQ") %>%
+  group_by(ID) %>%
+  summarize(mean_rating = mean(rating))
+
+dat_type2_LNQ <-
+  dat_targ %>%
+  filter(stim_supertype == "type2") %>%
+  filter(question_type == "LNQ") %>%
+  group_by(ID)%>%
+  summarize(mean_rating = mean(rating))
+
+t.test(dat_type1_HNQ$mean_rating, dat_type1_LNQ$mean_rating,
+       paired = TRUE,
+       alternative = "greater")
+t.test(dat_type2_HNQ$mean_rating, dat_type2_LNQ$mean_rating,
+       paired = TRUE,
+       alternatie = "greater")
+t.test(dat_type1_HNQ$mean_rating, dat_type2_HNQ$mean_rating,
+       paired = TRUE,
+       alternative = "less")
+```
+
+
+```{r wilcoxon signed rank test}
+
+dat_type1_HNQ <-
+  dat_targ %>%
+  filter(stim_supertype == "type1") %>%
+  filter(question_type == "HNQ") %>%
+  group_by(ID) %>%
+  summarize(mean_rating = mean(rating))
+
+
+dat_type1_PPQ <-
+  dat_targ %>%
+  filter(stim_supertype == "type1") %>%
+  filter(question_type == "PPQ") %>%
+  group_by(ID) %>%
+  summarize(mean_rating = mean(rating))
+
+wilcox.test(dat_type1_HNQ$mean_rating, 
+       dat_type1_PPQ$mean_rating, 
+       paired = TRUE)
+
+
+
+dat_type2_HNQ <-
+  dat_targ %>%
+  filter(stim_supertype == "type2") %>%
+  filter(question_type == "HNQ") %>%
+  group_by(ID) %>%
+  summarize(mean_rating = mean(rating))
+
+
+dat_type2_PPQ <-
+  dat_targ %>%
+  filter(stim_supertype == "type2") %>%
+  filter(question_type == "PPQ") %>%
+  group_by(ID) %>%
+  summarize(mean_rating = mean(rating))
+
+
+wilcox.test(dat_type2_PPQ$mean_rating, dat_type2_HNQ$mean_rating,
+       paired= TRUE)
+
+
+
+wilcox.test(dat_type1_HNQ$mean_rating, dat_type2_PPQ$mean_rating,
+       paired = TRUE)
+
+
+dat_type1_LNQ <-
+  dat_targ %>%
+  filter(stim_supertype == "type1") %>%
+  filter(question_type == "LNQ") %>%
+  group_by(ID) %>%
+  summarize(mean_rating = mean(rating))
+
+dat_type2_LNQ <-
+  dat_targ %>%
+  filter(stim_supertype == "type2") %>%
+  filter(question_type == "LNQ") %>%
+  group_by(ID)%>%
+  summarize(mean_rating = mean(rating))
+
+wilcox.test(dat_type1_HNQ$mean_rating, dat_type1_LNQ$mean_rating,
+       paired = TRUE)
+wilcox.test(dat_type2_LNQ$mean_rating, dat_type2_HNQ$mean_rating,
+       paired = TRUE)
+wilcox.test(dat_type1_HNQ$mean_rating, dat_type2_HNQ$mean_rating,
+       paired = TRUE)
+```
+
+
+
+
+```{r linear mixed effects model}
+mod_type1 <- lmer(rating ~  question_type + (1 | ID) + (1|stim), data = dat_targ[dat_targ$stim_supertype == "type1",])
+
+
+summary(mod_type1)
+
+#mod_type1_stim <- lmer(rating ~ question_type + (1|stim),
+#                       data = dat_targ[dat_targ$stim_supertype == "type1",])
+
+#summary(mod_type1_stim)
+
+
+mod_type2 <- lmer(rating ~  question_type + (1 | ID) + (1|stim) , data = dat_targ[dat_targ$stim_supertype == "type2",])
+
+summary(mod_type2)
+
+
+anova(mod_type1); anova(mod_type2)
+```
+
+
+
+
+
+
+
+
+```{r filler data}
+########leaving only filler rows##############
+dat_filler <- 
+  dat %>%
+  filter(stim %in% c("filler1", "filler2", "filler3", "filler4", "filler5", "filler6")) 
+
+
+dat_filler <-
+  dat_filler %>%
+  pivot_longer(c(`PPQ`, `LNQ`, `HNQ`), 
+               names_to = "question_type", values_to = "rating")
+dat_filler$rating <- as.numeric(dat_filler$rating)
+dat_filler$question_type <- factor(dat_filler$question_type, levels = c("PPQ", "LNQ", "HNQ"))
+dat_filler$stim <- factor(dat_filler$stim)
+dat_filler$stim <- fct_recode(dat_filler$stim,
+                              "(13)" = "filler1",
+                              "(14)" = "filler2",
+                              "(15)" = "filler3",
+                              "(16)" = "filler4",
+                              "(17)" = "filler5",
+                              "(18)" = "filler6")
+
+```
+
+
+```{r distribution of filler rating}
+mean(dat_filler$rating)
+sd(dat_filler$rating)
+ggplot(data = dat_filler)+
+  geom_histogram(aes(x = rating))
+```
+
+```{r}
+dat_filler_group <-
+  dat_filler %>%
+  group_by(stim, question_type) %>%
+  summarize(mean_rating = mean(rating, na.rm = TRUE),
+            margin_rating = qt(0.975, df = 99)*sd(rating)/sqrt(100))
+
+
+dat_filler_group_q <-
+  dat_filler %>%
+  group_by(question_type) %>%
+  summarize(mean_rating = mean(rating, na.rm = TRUE))
+
+
+
+filler_plot <-
+  ggplot(data = dat_filler_group) +
+  geom_bar(stat = "identity", 
+           position=position_dodge(),
+           aes(x = stim, y = mean_rating, fill = question_type))+ 
+  ggtitle("Filler")+
+  xlab("Stimulus") +
+  ylab("Naturalness Rating")+
+  scale_y_continuous(breaks = seq(0,7,1))+
+  guides(fill=guide_legend(title="Question Type")) +
+  theme_light() +
+  scale_fill_grey()
+
+
+filler_plot
+
+ggsave(plot = filler_plot, "filler_plot.jpg", path = "./plots/", 
+       width = 6, height = 2) 
+```
+
+
+
+
+
+
+```{r}
+dat_filler_HNQ <-
+  dat_filler %>%
+  filter(question_type == "HNQ")%>%
+  group_by(ID)%>%
+  summarize(mean_rating = mean(rating))
+
+
+t.test(dat_type1_HNQ$mean_rating, dat_filler_HNQ$mean_rating,
+       paired = TRUE,
+       alternative = "greater")
+```
+
+
